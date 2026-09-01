@@ -1,0 +1,1 @@
+Dan can list the `/srv/app/secrets/` directory because he has permission to access the directory itself, which allows him to see the filenames. However, he does not have read permission for `db-password.txt`, so attempting to read its contents results in “Permission denied”.
