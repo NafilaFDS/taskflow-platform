@@ -1,0 +1,18 @@
+README.md
+  h_cc66384447391e 1-60
+AI_PROMPTS.md
+  h_cc66384447391e 1-51
+TIMELINE.md
+  h_cc66384447391e 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b5cdc7462e80c274db7d81f73c954c6840e5ccd1",
+  "prompts": {},
+  "humans": {
+    "h_cc66384447391e": {
+      "author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
