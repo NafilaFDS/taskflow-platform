@@ -49,3 +49,36 @@ Created the required users and groups and configured supplementary group members
 **Result:**
 
 Used the explanation to plan the permission model before applying and testing the Task 1 access requirements.
+
+# Prompts Used for A4 Tasks 12–15
+
+## Task 12
+
+- Help me understand the task requirements first and break them into the exact commands I need to run.
+- Give me the safest commands to configure and test the required service without changing anything unrelated.
+- Tell me what output I should expect so I can verify that the configuration worked correctly.
+- Help me choose the minimum screenshots needed to prove that I completed the task.
+
+## Task 13
+
+- Explain how to configure the systemd service according to the task requirements.
+- Give me the exact systemd unit/configuration files I should create and explain what each important option does.
+- Show me how to start, stop, restart, and check the status of the service.
+- How can I verify from journalctl that the service started correctly and that its logs are being recorded?
+- Can I combine the required verification commands into one terminal screenshot while keeping the evidence clear?
+
+## Task 14
+
+- Help me test the service failure/crash behavior several times and verify how systemd handles the failures.
+- Give me a command that triggers the application crash repeatedly so I can collect reliable evidence.
+- How can I use journalctl to compare the current boot logs with logs from the previous boot?
+- What evidence should I capture to prove that systemd restarted or recovered the service as required?
+- Check whether this screenshot clearly proves the requirement and tell me if I need another one.
+
+## Task 15
+
+- Help me verify the final configuration without changing the working setup.
+- Give me commands to confirm the environment/token and timestamp for the task evidence.
+- Help me collect the final verification output in a concise way for my screenshot.
+- Based on the task requirements and my terminal output, tell me exactly what should go into ANSWERS.md.
+- Write a short explanation of what I configured, how I tested it, and what the results prove.

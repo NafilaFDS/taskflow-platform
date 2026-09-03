@@ -1,0 +1,21 @@
+[Unit]
+Description=MyApp Node.js Service
+Wants=network-online.target
+After=network-online.target mongod.service
+Requires=mongod.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=john
+Group=john
+WorkingDirectory=/srv/taskflow-platform/myapp
+Environment=PORT=3200
+ExecStart=/usr/bin/node /srv/taskflow-platform/myapp/app.js
+Restart=on-failure
+RestartSec=2
+SyslogIdentifier=myapp
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=MyApp Node.js Service - Restart Always Test
+Wants=network-online.target
+After=network-online.target mongod.service
+Requires=mongod.service
+
+[Service]
+Type=simple
+User=john
+Group=john
+WorkingDirectory=/srv/taskflow-platform/myapp
+Environment=PORT=3200
+ExecStart=/usr/bin/node /srv/taskflow-platform/myapp/app.js
+Restart=always
+RestartSec=2
+SyslogIdentifier=myapp
+
+[Install]
+WantedBy=multi-user.target

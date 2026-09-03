@@ -60,3 +60,28 @@ The script reported the service as FAIL with HTTP status `000`. It did not hang 
 ## Changes
 
 I added configuration-file validation and curl timeout/error handling so that missing configuration files and unreachable services are handled safely.
+
+### Task 13 — Restart Limit
+
+**Question:** Why would you want this limit in production instead of restarting forever?
+
+**Answer:**
+The restart limit is useful in production because an application that crashes repeatedly should not be restarted forever. A restart limit prevents a broken service from consuming excessive CPU and other resources, filling logs, or creating a continuous restart loop. It also makes the failure obvious so an administrator can investigate the underlying problem.
+
+**Question:** Then change the unit to `Restart=always` with no start limit, and run the same crash loop again. What happens differently?
+
+**Answer:**
+After changing the unit to `Restart=always` with no start limit, the service keeps restarting whenever it crashes. Unlike the previous configuration, it does not eventually stop after repeated failures, so the crash loop continues indefinitely.
+
+**Question:** How you would notice this in production if you were not watching the terminal.
+
+**Answer:**
+In production, if I were not watching the terminal, I would notice this through monitoring and alerting. Systemd logs would show repeated service starts and crashes, while monitoring could alert me about frequent restarts, abnormal CPU usage, or the service repeatedly becoming unavailable. I would then investigate the application logs and systemd journal to find the cause.
+
+### Task 15 (4 marks) — The app that is alive but dead
+
+**Question:**  
+Hit `/hang`. The app becomes stuck — it accepts connections but never replies. However, `systemctl status myapp` still shows `active (running)` because the process is alive. `Restart=on-failure` does nothing because nothing failed. Fix this using a systemd timer that runs a health check every 30 seconds and restarts the service if the health check fails. Prove that the service was detected as unhealthy and automatically restarted. Explain why `Restart=on-failure` did not catch this.
+
+**Answer:**  
+`Restart=on-failure` did not catch the hung application because systemd only restarts a service when its process exits or is considered failed. In this case, the Node.js process remained alive and systemd continued to report `active (running)`, even though the application stopped responding to requests. The watchdog solves this by periodically checking the `/healthz` endpoint with a timeout. When the health check failed, the watchdog automatically restarted `myapp`, allowing systemd to start a fresh process.
