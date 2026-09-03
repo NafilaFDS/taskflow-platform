@@ -1,0 +1,22 @@
+AI_PROMPTS.md
+  h_cc66384447391e 52-84
+scenario-a/ANSWERS.md
+  h_cc66384447391e 63-87
+scenario-a/configs/myapp-restart-always.service
+  h_cc66384447391e 1-19
+scenario-a/configs/myapp.service
+  h_cc66384447391e 1-21
+scenario-a/myapp/app.js
+  h_cc66384447391e 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "d9eaa4f2e19b59474b1e7591c4bd54bff8864283",
+  "prompts": {},
+  "humans": {
+    "h_cc66384447391e": {
+      "author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
