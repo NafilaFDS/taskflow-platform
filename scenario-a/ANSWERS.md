@@ -85,3 +85,10 @@ Hit `/hang`. The app becomes stuck — it accepts connections but never replies.
 
 **Answer:**  
 `Restart=on-failure` did not catch the hung application because systemd only restarts a service when its process exits or is considered failed. In this case, the Node.js process remained alive and systemd continued to report `active (running)`, even though the application stopped responding to requests. The watchdog solves this by periodically checking the `/healthz` endpoint with a timeout. When the health check failed, the watchdog automatically restarted `myapp`, allowing systemd to start a fresh process.
+
+### Task 18
+
+**Question:** Demonstrate nginx upstream failover and verify the effect of `max_fails=1` and `fail_timeout=30s`.
+
+**Answer:**
+Nginx continued serving requests through backend `3201` after backend `3202` was stopped, demonstrating upstream failover. After changing the upstream settings to `max_fails=1` and `fail_timeout=30s`, nginx marked the failed backend unavailable after one failed attempt and continued sending traffic to the healthy backend. Restarting `3202` made it available again.
