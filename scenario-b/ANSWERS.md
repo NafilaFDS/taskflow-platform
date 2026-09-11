@@ -104,3 +104,56 @@ If the Dockerfile instead copied the entire application with `COPY . .` before r
 The cached `npm ci` layer is particularly valuable for larger projects where dependency installation can take significantly longer.
 
 The rebuild therefore demonstrates effective Docker layer caching: **source changes rebuild the necessary application layers without reinstalling unchanged dependencies.**
+
+## Task 24 — Find the biggest layer
+
+I inspected the optimized image using:
+
+```bash
+docker history myapp:multi
+docker history --no-trunc --format "{{.Size}}\t{{.CreatedBy}}" myapp:multi
+```
+
+The largest layer was **156 MB**, which came from the `node:22-alpine` base image and contains the Node.js runtime.
+
+The largest layer created by my own Dockerfile was the `node_modules` layer at **13.9 MB**.
+
+Some files included in the Node base image, such as npm, Node headers, and Yarn, are not required when the application only runs `node app.js`. However, the Node binary itself is required to run the application.
+
+For this task, I kept `node:22-alpine` because it is a supported and relatively small Node.js runtime image.
+
+---
+
+## Task 25 — Prove there are no secrets in the image
+
+The image does not contain real secrets because credentials are provided at **runtime**, not during the image build.
+
+The `.dockerignore` excludes `.env` files, and the Dockerfile only copies the required application files. No credentials are stored in `ARG`, `ENV`, or the application source.
+
+I scanned all image layers using:
+
+```bash
+./scripts/scan-image-secrets.sh myapp:multi
+```
+
+The scan found:
+
+```text
+dotenv files: 0
+credential/key files: 0
+.npmrc auth tokens: 0
+PEM private keys: 0
+AWS/GitHub/Slack/OpenAI key formats: 0
+connection strings with passwords: 0
+hard-coded credentials: 0
+```
+
+Result:
+
+```text
+RESULT: no secrets found in any layer of myapp:multi
+```
+
+I also tested the scanner against an intentionally insecure image containing a fake `.env` file. The scanner correctly detected the secret even though the file had been deleted in a later Docker layer.
+
+This demonstrates that deleting a secret with `rm` does **not** remove it from an earlier Docker layer. The safe approach is to **never copy secrets into the image** and instead provide them at runtime or through Docker/BuildKit secrets.

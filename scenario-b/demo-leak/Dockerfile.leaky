@@ -1,0 +1,7 @@
+# DEMONSTRATION ONLY - this is the insecure pattern from Task 25.
+# It exists to prove that the deletion does not work. Never ship this.
+FROM alpine:latest
+WORKDIR /app
+COPY .env /app/.env
+RUN cat /app/.env > /dev/null && rm /app/.env      # "deleted" - but not really
+CMD ["sh"]
