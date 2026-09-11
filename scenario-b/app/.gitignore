@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment files (never commit real secrets)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Coverage / test output
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
