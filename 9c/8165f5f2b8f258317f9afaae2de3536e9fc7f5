@@ -1,0 +1,31 @@
+scenario-b/app/.env.example
+  s_7572937a7d6100::t_691c36f738ee8a 1-8
+scenario-b/app/.gitignore
+  s_7572937a7d6100::t_691c36f738ee8a 1-19
+scenario-b/app/package.json
+  s_7572937a7d6100::t_691c36f738ee8a 1-14,16-18
+  s_7572937a7d6100::t_f34aa7d92656fe 15
+scenario-b/app/app.js
+  s_7572937a7d6100::t_c07da7e921a7c9 12-14
+  s_7572937a7d6100::t_fd96261460a792 1-8,10-11,15-27,38-45,49-58,61-76
+  s_7572937a7d6100::t_36ac8816f73479 9,28-37,59-60
+  s_7572937a7d6100::t_29f5a8db2a43e9 46-48
+scenario-b/app/package-lock.json
+  s_7572937a7d6100::t_96957015622bb8 1-1049
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9c8165f5f2b8f258317f9afaae2de3536e9fc7f5",
+  "prompts": {},
+  "sessions": {
+    "s_7572937a7d6100": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f209e40f-2f86-4e37-9d50-b22a5cdbaa7a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
