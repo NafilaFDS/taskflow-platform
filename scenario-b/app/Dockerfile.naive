@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1
+
+###############################################################################
+# NAIVE single-stage build (intentionally unoptimized).
+#
+# This file exists only as a size baseline to compare against the optimized
+# multi-stage `Dockerfile`. It is deliberately written the way a first-pass
+# Dockerfile usually looks:
+#
+#   * full Debian-based `node:22` base image instead of the Alpine variant
+#   * OS build toolchain installed and never removed
+#   * whole build context copied in before dependencies are installed,
+#     so the dependency layer is invalidated by any source change
+#   * `npm install` (not `npm ci`) with dev dependencies included
+#   * npm cache and apt lists left behind in the image
+#   * runs as root
+#
+# Everything used to build the app stays in the shipped image.
+###############################################################################
+FROM node:22
+
+ENV PORT=3000 \
+    HOST=0.0.0.0
+
+WORKDIR /app
+
+# Compilers and headers for native modules. A single-stage build has nowhere
+# to discard these, so they are shipped to production along with the app.
+RUN apt-get update && apt-get install -y \
+      build-essential \
+      python3 \
+      git \
+      curl \
+      vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the entire build context first. Any change to any file busts the
+# dependency layer below and forces a full reinstall.
+COPY . .
+
+# npm install resolves versions at build time instead of honouring the
+# lockfile exactly, and keeps devDependencies plus the npm cache in the image.
+RUN npm install
+
+EXPOSE 3000
+
+# No USER directive: the container runs as root.
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/healthz" || exit 1
+
+CMD ["node", "app.js"]
