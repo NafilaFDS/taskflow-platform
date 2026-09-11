@@ -1,0 +1,21 @@
+scenario-b/app/Dockerfile
+  s_7572937a7d6100::t_6f4b15434b44ad 1-53
+scenario-b/app/.dockerignore
+  s_7572937a7d6100::t_6f4b15434b44ad 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "66a76b78622c4f23faf6897cad224a246060bc86",
+  "prompts": {},
+  "sessions": {
+    "s_7572937a7d6100": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f209e40f-2f86-4e37-9d50-b22a5cdbaa7a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
