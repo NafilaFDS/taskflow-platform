@@ -92,3 +92,19 @@ Hit `/hang`. The app becomes stuck — it accepts connections but never replies.
 
 **Answer:**
 Nginx continued serving requests through backend `3201` after backend `3202` was stopped, demonstrating upstream failover. After changing the upstream settings to `max_fails=1` and `fail_timeout=30s`, nginx marked the failed backend unavailable after one failed attempt and continued sending traffic to the healthy backend. Restarting `3202` made it available again.
+
+## Task 19 — The slow endpoint and the 504
+
+### What I did
+
+I first lowered nginx's `proxy_read_timeout` to 5 seconds. Since the `/slow` endpoint takes about 45 seconds, nginx stopped waiting for the backend and returned a **504 Gateway Timeout**.
+
+I then increased `proxy_read_timeout` so nginx could wait long enough for the 45-second response. The `/slow` request then completed successfully.
+
+### Why simply raising the timeout is usually the wrong fix
+
+Increasing the timeout only makes nginx wait longer; it does not make the slow endpoint faster. If 500 users request `/slow` at the same time, nginx has to keep many client connections open while waiting up to 45 seconds for the backend. This consumes worker connections, sockets, memory, and backend resources. Under heavy traffic, this can reduce capacity and cause more requests to queue or time out.
+
+In a real production system, I would avoid making users wait 45 seconds for a synchronous HTTP request. I would move the expensive work to a **background job/worker queue** and return a job ID immediately. The client could then check the job status or receive the result when it is ready.
+
+I would also optimize the slow operation itself, use caching where appropriate, apply rate limiting/concurrency limits, and monitor the service. Timeouts should protect the system rather than simply be increased to hide a slow backend.
