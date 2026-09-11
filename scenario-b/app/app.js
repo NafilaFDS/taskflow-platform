@@ -74,3 +74,6 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 module.exports = app;
+
+// Task 23 - layer caching test: source change invalidates only the COPY app.js layer onward.
+// task23 cache demo 1789144878
