@@ -1,0 +1,56 @@
+scenario-b/docker/compose.split-network.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-14
+scenario-b/.env.example
+  s_c89209f4997a66::t_5598352c139327 12-13
+  s_c89209f4997a66::t_b65e72d321cfe3 1-8,10-11
+  s_c89209f4997a66::t_274c0c48bb457a 9
+scenario-b/docker/compose.bind-mount-fixed.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-8
+scenario-b/docker/compose.bind-mount.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-8
+scenario-b/docker/compose.oom.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-16,18
+  s_c89209f4997a66::t_557d8ad376711d 17
+scenario-b/docker/compose.race.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-9
+scenario-b/docker/compose.slow-mongo.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-7
+scenario-b/docker-compose.yml
+  s_c89209f4997a66::t_5598352c139327 18
+  s_c89209f4997a66::t_95c514d9893e4c 65
+  s_c89209f4997a66::t_41a55db526efba 1-17,19-55,57-64,66-75
+  s_c89209f4997a66::t_612a4f2b9d79b5 56
+scenario-b/app/app.js
+  s_c89209f4997a66::t_6d0c0462dfbe9d 37-69
+  s_c89209f4997a66::t_5c5072b9b91087 18
+scenario-b/prometheus/prometheus.yml
+  s_c89209f4997a66::t_f4770041495601 1-4,6-8
+  s_c89209f4997a66::t_67f31a9bab1bdf 5
+scenario-b/grafana/provisioning/datasources/prometheus.yml
+  s_c89209f4997a66::t_65b7a299eba8a0 1-9
+scenario-b/docker/compose.localhost.yml
+  s_c89209f4997a66::t_91f5894af2c8b0 1-8
+scenario-b/.gitignore
+  s_c89209f4997a66::t_fe19d46cfaa24c 1-2
+scenario-b/ANSWERS.md
+  s_c89209f4997a66::t_dac6aca414a75a 160-182,184-228,230-239,242-286,288-328
+  s_c89209f4997a66::t_5598352c139327 183,240-241,329
+  s_c89209f4997a66::t_dc1c6874ef9c17 287
+  s_c89209f4997a66::t_17d0f7bb36b27c 229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d9b7e7baa816dd3a2fc99c51421602961d91c7b4",
+  "prompts": {},
+  "sessions": {
+    "s_c89209f4997a66": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86fb0002-b7cc-4110-bf04-a27a6a95dcec",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
