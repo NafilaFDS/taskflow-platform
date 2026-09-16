@@ -1,0 +1,8 @@
+# Task 28d - app listens on the container's loopback only.
+# Port publishing forwards traffic to the container's eth0 address, which
+# nothing is listening on. The in-container HEALTHCHECK probes 127.0.0.1, so
+# the container still reports healthy.
+services:
+  app:
+    environment:
+      HOST: "127.0.0.1"

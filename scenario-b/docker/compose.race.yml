@@ -1,0 +1,9 @@
+# Task 26 - BROKEN on purpose: reproduce the startup race.
+# Replaces the app's `condition: service_healthy` with the plain short form,
+# which only waits for the mongodb container to be *created/started*, not ready.
+#
+#   docker compose -f docker-compose.yml -f docker/compose.slow-mongo.yml -f docker/compose.race.yml up -d --build
+services:
+  app:
+    depends_on: !override
+      - mongodb

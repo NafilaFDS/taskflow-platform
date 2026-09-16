@@ -1,0 +1,18 @@
+# Task 28a - exit code 137 / OOMKilled.
+# The app container gets a 64 MiB hard limit (no swap) and runs a workload that
+# keeps allocating memory, so the kernel OOM killer SIGKILLs it (128 + 9 = 137).
+# restart "no" keeps the dead container around so its state can be inspected.
+services:
+  app:
+    restart: "no"
+    mem_limit: 64m
+    memswap_limit: 64m
+    command:
+      - node
+      - -e
+      - |
+        const leak = [];
+        setInterval(() => {
+          leak.push(Buffer.alloc(8 * 1024 * 1024, 1));
+          console.log('allocated MiB:', leak.length * 8);
+        }, 500);

@@ -1,0 +1,8 @@
+# Task 28c - BROKEN: dev-style bind mount of the source directory.
+# ./app on the host replaces the image's /app entirely, including the
+# /app/node_modules that `npm ci` installed at build time. node_modules is
+# git-ignored, so on a fresh clone the host directory has none.
+services:
+  app:
+    volumes:
+      - ./app:/app

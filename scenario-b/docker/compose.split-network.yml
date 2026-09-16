@@ -1,0 +1,14 @@
+# Task 28b - app and MongoDB on different networks.
+# Docker's embedded DNS only resolves service names for containers that share a
+# network, so "mongodb" in MONGODB_URI no longer resolves from the app.
+services:
+  app:
+    networks: !override
+      - frontend
+  mongodb:
+    networks: !override
+      - backend
+
+networks:
+  frontend:
+  backend:

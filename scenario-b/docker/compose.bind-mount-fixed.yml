@@ -1,0 +1,8 @@
+# Task 28c - FIXED: keep the bind mount for live source edits, but mount an
+# anonymous volume on /app/node_modules. A more specific mount wins, and a new
+# volume is pre-populated from the image, so the built dependencies stay visible.
+services:
+  app:
+    volumes:
+      - ./app:/app
+      - /app/node_modules

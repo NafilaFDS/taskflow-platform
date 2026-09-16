@@ -1,0 +1,7 @@
+# Task 26 - make MongoDB start slowly so the race is deterministic.
+# Simulates a slow database start (cold disk, journal recovery, small VPS):
+# the container is "running" for 20s before mongod begins listening.
+# Use with and without compose.race.yml to compare broken vs fixed.
+services:
+  mongodb:
+    entrypoint: ["sh", "-c", "echo 'simulated slow start: sleeping 20s'; sleep 20; exec docker-entrypoint.sh mongod"]

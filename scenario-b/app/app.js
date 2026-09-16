@@ -15,8 +15,7 @@ let mongoState = 'not_connected';
 const app = express();
 app.use(express.json());
 
-// Placeholder root route so the server can be verified as running.
-// Real API routes are added in a later task.
+// Root route reports process and MongoDB connection state.
 app.get('/', (req, res) => {
   res.json({
     service: 'taskflow-scenario-b',
@@ -33,6 +32,39 @@ app.get('/healthz', (req, res) => {
     status: 'ok',
     uptime: process.uptime()
   });
+});
+
+// Notes API (Task 27 - persistence test). Returns 503 when MongoDB is not
+// connected so a failed startup connection is visible to API callers.
+function notesCollection(res) {
+  if (mongoState !== 'connected') {
+    res.status(503).json({ error: 'MongoDB unavailable', mongodb: mongoState });
+    return null;
+  }
+  return mongoClient.db().collection('notes');
+}
+
+app.get('/notes', async (req, res) => {
+  const notes = notesCollection(res);
+  if (!notes) return;
+  const items = await notes.find().sort({ createdAt: 1 }).toArray();
+  res.json({ count: items.length, notes: items });
+});
+
+app.post('/notes', async (req, res) => {
+  const notes = notesCollection(res);
+  if (!notes) return;
+  const { title, body } = req.body || {};
+  if (typeof title !== 'string' || title.trim() === '') {
+    return res.status(400).json({ error: 'title is required' });
+  }
+  const note = {
+    title: title.trim(),
+    body: typeof body === 'string' ? body : '',
+    createdAt: new Date()
+  };
+  await notes.insertOne(note);
+  res.status(201).json(note);
 });
 
 async function connectToMongo() {
