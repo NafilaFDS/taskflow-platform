@@ -1,0 +1,58 @@
+# Task 33 - Grafana-managed alert: p95 latency of any route above 5s for 1m.
+#
+# Threshold: under normal load-test traffic the slowest route (GET /api/notes,
+# N+1) had a p95 between 1.4s and 3.0s depending on laptop power state (Panel A,
+# baseline minutes). No other route exceeded 0.9s. 5s sits clearly above the
+# worst normal value, while the heavy tenant pushes it to 13-15s. 5 is a bucket
+# boundary of http_request_duration_seconds, so the estimate is exact there.
+# for: 1m - the condition must hold on every evaluation (every 10s) for a full
+# minute before the alert fires, so a short spike does not page anyone.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: taskflow-latency
+    folder: Taskflow B3
+    interval: 10s
+    rules:
+      - uid: taskflow-p95-latency
+        title: p95 latency above 5s on a route
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              # One series per route. ">= 0" drops NaN (routes with no traffic
+              # in the window), so an idle route reads as no data, not a value.
+              expr: histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket{route!~"unmatched|/healthz|/readyz"}[1m]))) >= 0
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        labels:
+          severity: warning
+          service: taskflow-api
+        annotations:
+          summary: 'p95 latency on {{ $labels.route }} is {{ printf "%.2f" $values.A.Value }}s (threshold 5s)'
+          description: Normal p95 of the slowest route is 1.4-3.0s. Check Panel A/B and Panel H for the route and tenant causing it.
+        isPaused: false

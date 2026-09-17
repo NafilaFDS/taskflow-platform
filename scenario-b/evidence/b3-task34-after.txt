@@ -1,0 +1,94 @@
+# Task 34 AFTER fix - output of seed/task34-measure.js
+# captured 2026-09-17 20:42:06 +06, no load running, 'Battery Power' (Low Power Mode on)
+indexes on tags: ["_id_","idx_tags_note_id"]
+
+== tags_by_note: db.tags.find({ note_id: 1 }, { _id: 0, name: 1 }).explain("executionStats")
+{
+  executionStats: {
+    executionSuccess: true,
+    nReturned: 3,
+    executionTimeMillis: 0,
+    totalKeysExamined: 3,
+    totalDocsExamined: 3,
+    executionStages: {
+      stage: 'PROJECTION_SIMPLE',
+      nReturned: 3,
+      executionTimeMillisEstimate: 0,
+      inputStage: {
+        stage: 'FETCH',
+        nReturned: 3,
+        executionTimeMillisEstimate: 0,
+        docsExamined: 3,
+        inputStage: {
+          stage: 'IXSCAN',
+          nReturned: 3,
+          executionTimeMillisEstimate: 0,
+          keysExamined: 3,
+          indexName: 'idx_tags_note_id',
+          keyPattern: {
+            note_id: 1
+          },
+          indexBounds: {
+            note_id: [
+              '[1, 1]'
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+tags_by_note average over 200 runs (random note_id): 0.50 ms
+
+== stats_tag_count filter (acme, 30000 note ids): db.tags.find({ note_id: { $in: [...] } }, { _id: 0, note_id: 1 }).explain("executionStats")
+{
+  executionStats: {
+    executionSuccess: true,
+    nReturned: 90070,
+    executionTimeMillis: 90,
+    totalKeysExamined: 101705,
+    totalDocsExamined: 0,
+    executionStages: {
+      stage: 'PROJECTION_COVERED',
+      nReturned: 90070,
+      executionTimeMillisEstimate: 3,
+      inputStage: {
+        stage: 'IXSCAN',
+        nReturned: 90070,
+        executionTimeMillisEstimate: 1,
+        keysExamined: 101705,
+        indexName: 'idx_tags_note_id',
+        keyPattern: {
+          note_id: 1
+        },
+        indexBounds: {
+          note_id: [
+            '[1, 1]',
+            '[2, 2]',
+            '[3, 3]',
+            '[4, 4]',
+            '[5, 5]',
+            '... 29995 more'
+          ]
+        }
+      }
+    }
+  }
+}
+stats_tag_count countDocuments average over 20 runs: 117.20 ms
+
+== tags collection size (bytes)
+{
+  documents: 150002,
+  dataSize: 6729058,
+  storageSize: 3563520,
+  totalIndexSize: 2899968,
+  indexSizes: {
+    _id_: 1875968,
+    idx_tags_note_id: 1024000
+  }
+}
+
+== insert timing (benchmark rows are deleted afterwards)
+insertMany, 10,000 tags per call: median 56 ms per round (0.006 ms per document), rounds [51,53,53,54,56,59,63,73,105]
+insertOne, 2,000 single inserts : median 452 ms per round (0.226 ms per document), rounds [419,422,424,437,452,454,455,463,518]

@@ -1,9 +1,21 @@
 apiVersion: 1
 
+# The first version of this file had no uid, so Grafana generated one. Deleting
+# by name before provisioning lets the fixed uid below take effect; the
+# datasource is fully defined here, so recreating it on start loses nothing.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+
 datasources:
   - name: Prometheus
+    # Fixed uid so the dashboard JSON and alert rules can reference it.
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
     editable: false
+    jsonData:
+      # Matches the app scrape interval in prometheus/prometheus.yml.
+      timeInterval: 5s

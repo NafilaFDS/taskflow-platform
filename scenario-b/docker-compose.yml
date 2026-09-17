@@ -1,4 +1,4 @@
-# Scenario B - B2: app + MongoDB + Prometheus + Grafana
+# Scenario B - B2/B3: app + MongoDB + Prometheus + Grafana
 #
 # Usage (from scenario-b/):
 #   cp .env.example .env      # then set real passwords
@@ -20,6 +20,9 @@ services:
       PORT: "3000"
       HOST: "0.0.0.0"
       MONGODB_URI: "mongodb://${MONGO_ROOT_USERNAME:?set MONGO_ROOT_USERNAME in .env}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}@mongodb:27017/taskflow?authSource=admin"
+      # Per-request time budget. Past it, no more DB queries run and the request
+      # fails with 504 instead of holding MongoDB for minutes (B3 load tests).
+      REQUEST_TIMEOUT_MS: "15000"
     # The app connects to MongoDB once at startup, so it must not start until
     # MongoDB actually answers queries - "container started" is not enough.
     depends_on:

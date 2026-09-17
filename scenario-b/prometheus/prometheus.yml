@@ -1,8 +1,20 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
-  # Self-monitoring only: the app does not expose /metrics yet.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  # The app's /metrics endpoint (Task 30). "app" is the compose service name,
+  # resolved by Docker DNS on the project network; 3000 is the container port,
+  # not the host port. Scraped every 5s so a 5-minute load test and its
+  # 30-second burst have enough samples for rate() over 1m windows.
+  - job_name: taskflow-app
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:3000"]
+        labels:
+          service: taskflow-api

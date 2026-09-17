@@ -16,7 +16,7 @@ COPY package.json package-lock.json ./
 # npm ci installs exactly what the lockfile pins.
 RUN npm ci
 
-COPY app.js ./
+COPY app.js metrics.js ./
 
 # Remove dev dependencies so only production packages are carried forward.
 RUN npm prune --omit=dev
@@ -38,7 +38,7 @@ WORKDIR /app
 # Files are owned by it so the app never needs root.
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./
-COPY --chown=node:node app.js ./
+COPY --chown=node:node app.js metrics.js ./
 
 # Drop privileges. Everything below this line runs as non-root.
 USER node

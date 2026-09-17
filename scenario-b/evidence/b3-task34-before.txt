@@ -1,0 +1,81 @@
+# Task 34 BEFORE fix - output of seed/task34-measure.js
+# captured 2026-09-17 20:40:42 +06, no load running, 'Battery Power' (Low Power Mode on)
+indexes on tags: ["_id_"]
+
+== tags_by_note: db.tags.find({ note_id: 1 }, { _id: 0, name: 1 }).explain("executionStats")
+{
+  executionStats: {
+    executionSuccess: true,
+    nReturned: 3,
+    executionTimeMillis: 67,
+    totalKeysExamined: 0,
+    totalDocsExamined: 150002,
+    executionStages: {
+      stage: 'PROJECTION_SIMPLE',
+      nReturned: 3,
+      executionTimeMillisEstimate: 2,
+      inputStage: {
+        stage: 'COLLSCAN',
+        nReturned: 3,
+        executionTimeMillisEstimate: 2,
+        docsExamined: 150002,
+        filter: {
+          note_id: {
+            '$eq': 1
+          }
+        }
+      }
+    }
+  }
+}
+tags_by_note average over 200 runs (random note_id): 53.61 ms
+
+== stats_tag_count filter (acme, 30000 note ids): db.tags.find({ note_id: { $in: [...] } }, { _id: 0, note_id: 1 }).explain("executionStats")
+{
+  executionStats: {
+    executionSuccess: true,
+    nReturned: 90070,
+    executionTimeMillis: 118,
+    totalKeysExamined: 0,
+    totalDocsExamined: 150002,
+    executionStages: {
+      stage: 'PROJECTION_SIMPLE',
+      nReturned: 90070,
+      executionTimeMillisEstimate: 3,
+      inputStage: {
+        stage: 'COLLSCAN',
+        nReturned: 90070,
+        executionTimeMillisEstimate: 3,
+        docsExamined: 150002,
+        filter: {
+          note_id: {
+            '$in': [
+              1,
+              2,
+              3,
+              4,
+              5,
+              '... 29995 more'
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+stats_tag_count countDocuments average over 20 runs: 132.70 ms
+
+== tags collection size (bytes)
+{
+  documents: 150002,
+  dataSize: 6729058,
+  storageSize: 3563520,
+  totalIndexSize: 1867776,
+  indexSizes: {
+    _id_: 1867776
+  }
+}
+
+== insert timing (benchmark rows are deleted afterwards)
+insertMany, 10,000 tags per call: median 36 ms per round (0.004 ms per document), rounds [33,34,34,35,36,36,36,38,46]
+insertOne, 2,000 single inserts : median 462 ms per round (0.231 ms per document), rounds [429,429,439,452,462,480,501,511,897]
