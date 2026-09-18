@@ -422,3 +422,192 @@ Try to minimize the number of screenshots while still satisfying the exam requir
   7. any issues that require my confirmation
 
 Do not stop after creating files. Actually run and verify the stack as far as possible.
+
+## B4 Tasks
+
+You are my DevOps exam implementation agent.
+
+We are now working on B4 — Docker Swarm: Scaling and Rollback (Tasks 35–40).
+
+IMPORTANT:
+
+- Do not blindly create a new application.
+- First inspect the existing project and understand the current B3 implementation.
+- Reuse the existing notes API/app wherever possible.
+- Do not destroy or overwrite working B3 functionality.
+- Keep the implementation simple and exam-friendly.
+- The goal is to satisfy the B4 rubric, not to over-engineer.
+- I am a beginner, so explain important changes briefly in simple language.
+- Before making changes, inspect the repository structure, Dockerfile, docker-compose files, app entrypoint, healthcheck, and existing documentation.
+- Do not commit or push anything unless I explicitly ask you to.
+
+ENVIRONMENT:
+
+- B4 can use a single Swarm node.
+- Prefer a single Linux VM/VPS unless the existing environment already provides another node.
+- I will use VS Code and its terminal, preferably through SSH into the VM/VPS.
+- Do not create multiple VMs unless there is a concrete reason.
+- Docker Hub/GHCR may be used as the image registry.
+
+B4 REQUIREMENTS:
+
+TASK 35 — Deploy the stack
+
+- Initialize Docker Swarm if not already initialized.
+- Verify with:
+  docker node ls
+- Prepare a Swarm stack for the notes API.
+- Use a registry image that Swarm can pull.
+- Deploy the stack.
+- Service should be named notes_app if possible so the rubric commands work.
+- Make sure replicas are running.
+- We need evidence for:
+  docker stack services notes
+  docker node ls
+- Clearly document whether this is a single-node or multi-node setup.
+
+TASK 36 — Scale to 5 replicas
+
+- Scale:
+  docker service scale notes_app=5
+- Verify:
+  docker service ps notes_app
+- Modify the app so the response contains:
+  X-Served-By: <container hostname>
+- Use the app's hostname/container ID to identify which replica served the request.
+- Make sure /healthz works.
+- Test all 5 replicas using repeated curl requests.
+- If keep-alive causes the same container to appear repeatedly, use:
+  curl -H "Connection: close"
+- We need screenshot evidence showing all 5 different hostnames.
+
+TASK 37 — Rolling update with zero downtime
+
+- Ensure the Swarm service configuration supports:
+  update order: start-first
+- Ensure there is a useful healthcheck for /healthz.
+- Create v2 with a clearly visible version difference from v1.
+- Push v2 to the registry.
+- Update the service from v1 to v2.
+- During the update, continuously call /healthz and log HTTP status codes.
+- Inspect:
+  docker service ps notes_app
+- Count failures honestly.
+- Do NOT fake or hide failures.
+- If zero failures are achieved, preserve the actual evidence.
+- If failures occur, document the real reason.
+- Make sure the app has graceful shutdown handling if appropriate.
+
+TASK 38 — Broken v3 and rollback
+
+- Create a deliberately broken v3.
+- Prefer a simple predictable failure that Swarm can detect through the healthcheck or startup failure.
+- Deploy v3:
+  docker service update --image <registry>/notes-api:v3 notes_app
+- Configure Swarm so failed updates automatically roll back.
+- Monitor:
+  docker service ps notes_app --no-trunc
+  docker service inspect notes_app --format '{{json .UpdateStatus}}' | jq
+- Verify the service returns to v2 after rollback.
+- Capture timestamps so rollback duration can be calculated.
+- Ensure UpdateStatus eventually shows rollback_completed if the rubric expects it.
+- We need evidence of failed/rejected tasks, the final v2 state, and rollback_completed.
+- Document what would happen without a healthcheck.
+
+TASK 39 — Resource limits vs reservations
+
+- Inspect the existing service resource configuration.
+- Configure a memory reservation that the test node cannot satisfy, e.g. 8G on a 2GB node, only if this is safe and appropriate for the exam environment.
+- Do NOT accidentally crash or damage the host.
+- Scale the service so Swarm attempts to place more tasks.
+- Show:
+  docker service ps notes_app --no-trunc
+- The output should demonstrate that the task cannot be scheduled because of insufficient resources.
+- Document clearly:
+  reservation = resource Swarm requires before scheduling
+  limit = maximum resource the container is allowed to consume
+
+TASK 40 — Scale down during live traffic
+
+- Have the traffic loop running.
+- Scale the service from 5 replicas to 2.
+- Count HTTP failures from the traffic loop.
+- Do not fabricate a zero-failure result.
+- Preserve the real output for the exam evidence.
+
+SCREENSHOT / EVIDENCE REQUIREMENTS:
+For EVERY screenshot related to Tasks 35–40, the exam requires this to be run in the same terminal immediately before the screenshot:
+
+echo "$EXAM_TOKEN | $(date)"
+
+IMPORTANT:
+
+- Do not forget this.
+- The screenshot must show the token/date line and the relevant command/output in the same terminal when practical.
+- Tell me exactly when I should take each screenshot.
+- Minimize screenshots. Prefer one strong screenshot per required evidence item if it can clearly show everything.
+- Do not take unnecessary screenshots.
+- Tell me which screenshots are mandatory according to the rubric and which are optional.
+- Keep screenshot filenames organized, e.g.:
+  B4-T35-stack-services.png
+  B4-T35-node-ls.png
+  B4-T36-five-replicas.png
+  etc.
+
+ANSWERS.md:
+
+- Inspect the existing ANSWERS.md before editing.
+- Add a B4 section for Tasks 35–40.
+- Use simple human-written explanations.
+- Do not claim results that were not actually observed.
+- Include:
+  - single-node vs multi-node
+  - commands/results
+  - scaling evidence
+  - rolling update result
+  - failure count
+  - rollback duration
+  - healthcheck explanation
+  - reservation vs limit explanation
+  - scale-down traffic failure count
+- Keep answers concise and exam-friendly.
+
+WORKFLOW:
+
+1. Inspect the existing project first.
+2. Report what currently exists.
+3. Identify what B4 already satisfies.
+4. Identify what needs to be changed.
+5. Implement only the necessary changes.
+6. Build/test locally where appropriate.
+7. Prepare registry images.
+8. Configure Swarm.
+9. Execute Tasks 35–40 one at a time.
+10. After each task, stop and tell me:
+
+- what happened
+- whether the task passed
+- exact screenshot command
+- exact screenshot to take
+- what to write in ANSWERS.md
+
+11. Do not move to the next task until I confirm, unless I explicitly ask you to execute the whole sequence.
+12. Never fabricate evidence.
+13. Never delete useful existing B3 files without explaining why.
+
+FIRST ACTION:
+Do NOT start implementing yet.
+
+First inspect the repository and give me:
+
+1. Current project structure
+2. Existing Docker setup
+3. Existing /healthz endpoint and healthcheck
+4. Existing Docker image/tag
+5. Existing docker-compose/stack configuration
+6. Whether v1 is ready for Swarm
+7. What needs to be changed for B4
+8. Whether one VM/VPS is sufficient
+9. Exact files you intend to modify
+
+Then wait for my confirmation before making changes.

@@ -28,9 +28,17 @@ RUN npm prune --omit=dev
 ###############################################################################
 FROM node:22-alpine AS runtime
 
+# B4 (Swarm). Passed with --build-arg at build time so each image tag carries
+# its own identity: APP_VERSION=v1 / v2 / v3, and BREAK_HEALTHZ=1 only for the
+# deliberately broken v3 used in the rollback test (Task 38).
+ARG APP_VERSION=dev
+ARG BREAK_HEALTHZ=0
+
 ENV NODE_ENV=production \
     PORT=3000 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    APP_VERSION=${APP_VERSION} \
+    BREAK_HEALTHZ=${BREAK_HEALTHZ}
 
 WORKDIR /app
 

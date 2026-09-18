@@ -1,0 +1,89 @@
+# Scenario B - B4: Docker Swarm stack for the notes API.
+#
+# Deployed as stack "notes", so the service is named notes_app and the rubric
+# commands (docker service scale notes_app=5, docker service ps notes_app)
+# work unchanged.
+#
+#   docker stack deploy -c swarm/stack.yml notes
+#
+# This stack is separate from docker-compose.yml (B2/B3), which keeps running
+# on host port 3100 with MongoDB, Prometheus and Grafana. The Swarm stack runs
+# the same application image on host port 3200 and exercises scaling, rolling
+# updates and rollback. MONGODB_URI is deliberately not set here: a Swarm
+# service cannot join the Compose bridge network, and B4 only needs /healthz
+# and the X-Served-By header. /healthz reports the process, not the database,
+# so it answers 200 either way.
+
+services:
+  app:
+    # Pulled from the local registry running on the Swarm node (port 5001).
+    image: localhost:5001/notes-api:v1
+
+    ports:
+      # Routing mesh: any node answers on 3200 and load-balances across replicas.
+      - target: 3000
+        published: 3200
+        protocol: tcp
+        mode: ingress
+
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+
+    # Overrides the image HEALTHCHECK with a tighter interval, so Swarm notices
+    # a bad version in about 20s instead of about 40s. Uses the runtime's own
+    # node binary - no curl or wget is installed in the final image.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "const http=require('http');const port=process.env.PORT||3000;const req=http.get({host:'127.0.0.1',port:port,path:'/healthz',timeout:2500},res=>{process.exit(res.statusCode===200?0:1)});req.on('timeout',()=>{req.destroy();process.exit(1)});req.on('error',()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+    # Time the app gets to finish in-flight requests after SIGTERM, before
+    # Swarm sends SIGKILL. The app drains in server.close() (see app.js).
+    stop_grace_period: 15s
+
+    deploy:
+      replicas: 3
+
+      update_config:
+        # start-first: the replacement task starts and becomes healthy BEFORE
+        # the old task is stopped. That is what makes the update zero-downtime.
+        order: start-first
+        parallelism: 1
+        delay: 5s
+        # Watch each new task for 30s after it starts. A task that fails its
+        # healthcheck inside this window fails the update.
+        monitor: 30s
+        max_failure_ratio: 0
+        # A failed update is rolled back to the previous image automatically.
+        failure_action: rollback
+
+      rollback_config:
+        order: start-first
+        parallelism: 1
+        delay: 5s
+        monitor: 20s
+        failure_action: pause
+
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 60s
+
+      resources:
+        # limit = the ceiling the container may consume at runtime.
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        # reservation = what Swarm must find free on a node before it will
+        # schedule the task there.
+        reservations:
+          cpus: "0.10"
+          memory: 64M

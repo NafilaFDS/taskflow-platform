@@ -827,3 +827,291 @@ Before deciding, I would measure:
 - **The real traffic mix.** `sum by (route) (rate(http_requests_total[1h]))` from production, not the synthetic equal mix. Panel B's winner depends on it.
 - **Panels B and D after this fix.** Check which endpoint and query now hold the most total time. After the fix, `stats_note_ids` and `stats_tag_count` have the highest p99 (234 ms and 203 ms), and `notes_search` still reads all 50,000 notes on every call.
 - **For the search problem specifically:** how often `/api/search` is called, its p95 per tenant, and whether users need substring matching. A text index only matches whole words, so it changes behavior and adds its own index size and write cost, which would be measured the same way as above.
+
+---
+
+# B4 — Docker Swarm: Scaling and Rollback
+
+**Single-node Swarm.** The node is the Linux VM Docker Desktop already runs
+(`docker-desktop`, 8 CPU / 7.65 GiB), promoted to manager with `docker swarm
+init`. No second VM: scaling, rolling update, rollback and resource scheduling
+are all observable on one node, and with one node a task that cannot be placed
+there cannot be placed anywhere — which is what makes Task 39 provable.
+
+The B2/B3 Compose stack keeps running untouched on port 3100. The Swarm stack
+runs the same image on port 3200 as stack `notes`, so the service is `notes_app`
+and the rubric commands work unchanged. Images come from a `registry:2`
+container on the node, published on port 5001 (5000 is taken by macOS AirPlay).
+
+`MONGODB_URI` is not set in the Swarm stack: a Swarm service cannot join the
+Compose bridge network where MongoDB lives, and B4 only exercises `/healthz` and
+`X-Served-By`. `/healthz` reports the process, not the database, so it answers
+200 either way. `/api/*` is still served by the Compose stack on 3100.
+
+**App changes for B4** (`app/app.js`, `app/Dockerfile`):
+
+| Change | Why |
+|---|---|
+| `X-Served-By: <hostname>` on every response | In a container the hostname is the container ID, so each reply names its replica (T36) |
+| `APP_VERSION` build arg → `ENV`, echoed in `/healthz` | Version baked per image tag, so tag and reported version cannot disagree (T37) |
+| `BREAK_HEALTHZ=1` build arg | The broken v3: `/healthz` returns 500 while the process stays up (T38) |
+| Graceful shutdown | Old code called `process.exit(0)` straight after `server.close()`, cutting off in-flight requests. Now drains first, force-exits after 10s |
+
+Nothing in the Compose stack, the multi-stage build, the non-root user or the
+image healthcheck was changed.
+
+## Task 35 — Deploy the stack
+
+    ./swarm/build-push.sh v1                        # build + push localhost:5001/notes-api:v1
+    docker swarm init --advertise-addr 127.0.0.1
+    docker stack deploy -c swarm/stack.yml notes
+
+    $ docker node ls
+    ID                          HOSTNAME        STATUS  AVAILABILITY  MANAGER STATUS  ENGINE
+    q0dti7aqqjdpshjz1o2tlxtg0 * docker-desktop  Ready   Active        Leader          29.2.1
+
+    $ docker stack services notes
+    NAME       MODE        REPLICAS  IMAGE                        PORTS
+    notes_app  replicated  3/3       localhost:5001/notes-api:v1  *:3200->3000/tcp
+
+All three tasks `Running`, all three containers `healthy`. Six requests to
+`:3200/healthz` returned 200 from three different hostnames.
+
+**The registry pull was verified, not assumed.** The local image was deleted
+(`docker image rm localhost:5001/notes-api:v1` → `Deleted: sha256:6997a4db4695...`)
+*before* deploying, and the tasks started anyway with that same digest back on
+the node — it could only have come from `localhost:5001`.
+
+Evidence: `evidence/b4-task35-stack-nodes.png`
+
+## Task 36 — Scale to 5 replicas
+
+    $ docker service scale notes_app=5
+    verify: Service notes_app converged
+
+    $ docker service ps notes_app
+    notes_app.1 ... Running 38 minutes ago      # tasks 1-3 keep their original
+    notes_app.2 ... Running 38 minutes ago      # start time: scaling up adds
+    notes_app.3 ... Running 38 minutes ago      # tasks, it does not restart them
+    notes_app.4 ... Running 45 seconds ago
+    notes_app.5 ... Running 45 seconds ago
+
+15 requests, each on a fresh connection, printing status + `X-Served-By`:
+
+       3 200 04a920ef9a9f
+       3 200 6558367398a2
+       3 200 75e65083ead8
+       3 200 b8181270206c
+       3 200 f2b51ff7a0de
+
+All five replicas answered, every reply 200, load split evenly.
+
+**Why `Connection: close`:** the routing mesh balances *connections*, not
+requests, so a reused keep-alive socket stays pinned to one replica. Measured —
+four requests over one keep-alive connection, three runs:
+
+    run 1: 04a920ef9a9f ×4      run 2: f2b51ff7a0de ×4      run 3: 75e65083ead8 ×4
+
+Each run picked a different replica, then stuck to it. A new connection per
+request is what produces the even 3/3/3/3/3 spread.
+
+Evidence: `evidence/b4-task36-five-replicas.png`
+
+## Task 37 — Rolling update with zero downtime
+
+Service config (`swarm/stack.yml`):
+
+    update_config:
+      order: start-first       # new task starts and turns healthy BEFORE the old one stops
+      parallelism: 1           # one replica at a time, so 4 of 5 always serve
+      monitor: 30s
+      failure_action: rollback
+    healthcheck: /healthz, interval 5s, timeout 3s, start_period 5s, retries 3
+    stop_grace_period: 15s
+
+The healthcheck is what makes `start-first` mean anything: a task joins the
+load-balancer rotation only after it passes. Without one, Swarm would route to a
+container the moment its process started.
+
+v2 is the same code with `APP_VERSION=v2`, so the difference shows in every
+response. Traffic ran at 0.2s intervals throughout, logging status, replica and
+version to `evidence/B4-T37-traffic.txt`:
+
+    docker service update --image localhost:5001/notes-api:v2 notes_app
+
+    $ docker service inspect notes_app --format '{{json .UpdateStatus}}' | jq
+    { "State": "completed",
+      "StartedAt":   "2026-09-18T16:07:04.583386253Z",
+      "CompletedAt": "2026-09-18T16:08:35.886914212Z",
+      "Message": "update completed" }
+
+**Duration: 91 seconds** for 5 replicas. `docker service ps` showed 5 v2 tasks
+`Running`, 5 v1 tasks `Shutdown`, **ERROR column empty**.
+
+### Failure count: 0
+
+    1189 requests, 1189 × HTTP 200, 0 non-2xx
+
+Straight from the loop's own counter (`requests: 1189  failures: 0`); the full
+per-request log is kept as evidence.
+
+The log also proves `start-first` rather than a merely fast update: both
+versions answered on the same port at the same time — first v2 reply 16:07:12,
+last v1 reply 16:08:01 — and five distinct v1 hostnames plus five distinct v2
+hostnames appear, so every replica really was replaced.
+
+Evidence: `evidence/b4-task37-rolling-update.png`, `evidence/B4-T37-traffic.txt`
+
+## Task 38 — Broken v3 and automatic rollback
+
+v3 is the same code built with `BREAK_HEALTHZ=1`: `/healthz` returns 500 while
+the process keeps running. A deliberately quiet failure — nothing crashes, so
+only the healthcheck can catch it. Checked outside Swarm first: `/healthz ->
+HTTP 500`, container `Up 28 seconds (unhealthy)`.
+
+    $ docker service update --detach --image localhost:5001/notes-api:v3 notes_app
+
+UpdateStatus, polled every 5s:
+
+    16:18:10Z updating → 16:18:25Z updating → 16:18:30Z rollback_started → 16:18:56Z rollback_completed
+
+    { "State": "rollback_completed",
+      "StartedAt":   "2026-09-18T16:18:10.522351423Z",
+      "CompletedAt": "2026-09-18T16:18:55.270185055Z",
+      "Message": "rollback completed" }
+
+**Timings.** Failure detected 15–20s after the update began (5s poll resolution),
+matching the healthcheck arithmetic: `start_period 5s` + 3 failed probes at 5s.
+**Failed update plus rollback: 44.7 seconds total**, roughly 25s of it rollback.
+
+### Back on v2, with no user impact
+
+    $ docker service inspect notes_app --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+    localhost:5001/notes-api:v2
+
+    $ curl -s http://localhost:3200/healthz
+    {"status":"ok","version":"v2","served_by":"daa652ee1f3a","uptime":723.1}
+
+Uptime 723s: that is the *same container* that was serving before the bad
+deploy. With `start-first` Swarm never stopped it, because the v3 task never
+became healthy. Traffic during the failed deploy: **847 requests, 847 × HTTP
+200, every reply from v2** — not one request reached a v3 container.
+
+### Observed task states, and the limitation against the rubric
+
+    $ docker service ps notes_app --no-trunc
+    NAME              IMAGE         DESIRED STATE  CURRENT STATE  ERROR
+    notes_app.3       notes-api:v3  Shutdown       Shutdown       (empty)
+     \_ notes_app.3   notes-api:v3  Shutdown       Complete       (empty)
+     \_ notes_app.3   notes-api:v2  Running        Running
+
+Only one slot was touched (`parallelism: 1`). Two v3 task records exist — the
+first attempt and one restart — and neither ever reached a stable `Running`.
+
+**Stating this plainly: the rubric asks for evidence of failed/rejected tasks,
+and that is not what these rows show.** The states read `Shutdown` and
+`Complete` with an **empty ERROR column** — not `Failed`, not `Rejected`. The
+reason is the graceful shutdown added for Task 37: when Swarm killed the
+unhealthy container it handled SIGTERM and exited 0, so Swarm recorded a clean
+stop. The failure is recorded on the container's health state instead:
+
+    $ docker inspect <v3 container> --format 'ExitCode={{.State.ExitCode}} Health={{.State.Health.Status}} FailingStreak={{.State.Health.FailingStreak}}'
+    ExitCode=0  Health=unhealthy  FailingStreak=3
+
+So the evidence for "Swarm detected a bad version and rejected it" is the
+`rollback_completed` UpdateStatus plus `Health=unhealthy FailingStreak=3`, not
+the ERROR column. Had v3 crashed at startup instead, the row would have read
+`Failed` with `task: non-zero exit (1)`; both routes trigger the same
+`failure_action: rollback`, but only the crash route prints an error string.
+This was not re-run that way, so no such output is claimed here.
+
+### Without a healthcheck
+
+Swarm would treat a task as ready the moment its process started, so v3 would
+join the rotation and serve 500s, the update would be recorded as `completed`
+rather than rolling back, and all 5 replicas would end up broken — `/healthz`
+fails but the process lives, so nothing would ever restart it. The healthcheck
+is what turns "the process is alive" into "the service works", and that is the
+difference between a 45-second automatic rollback and a silent outage.
+
+Evidence: `evidence/b4-task38-rollback.png`, `evidence/B4-T38-traffic.txt`
+
+## Task 39 — Resource limits vs reservations
+
+- **Reservation** — what Swarm must find free on a node *before* it will place a
+  task there. Scheduling accounting only; nothing is allocated.
+- **Limit** — the ceiling the container may actually consume once running.
+  Exceeding a memory limit means an OOM kill (exit 137, as in Task 28a).
+
+Reservation decides **where a task can run**, limit decides **how much it may
+use**. Swarm never looks at real usage when scheduling, only at reservations.
+
+Starting config: limits 0.50 CPU / 256M, reservations 0.10 CPU / **64M**.
+Node capacity: 8 CPUs / **8,217,341,952 bytes (7.65 GiB)**.
+
+    $ docker service update --detach --reserve-memory 8G notes_app   # 8,589,934,592 > node total
+    $ docker service update --detach --replicas 7 notes_app          # force new placements
+
+    $ docker service ps notes_app --no-trunc --filter desired-state=running
+    NAME              CURRENT STATE  ERROR
+    notes_app.1       Running
+    notes_app.2       Running
+    notes_app.3       Running
+    notes_app.4       Pending        "no suitable node (insufficient resources on 1 node)"
+    notes_app.5       Pending        "no suitable node (insufficient resources on 1 node)"
+    notes_app.6       Pending        "no suitable node (insufficient resources on 1 node)"
+    notes_app.7       Pending        "no suitable node (insufficient resources on 1 node)"
+
+    $ docker service ls --filter name=notes_app
+    notes_app   5/7
+
+Four tasks stuck in `Pending`, never `Failed` — Swarm is not rejecting them, it
+simply has nowhere to put them and queues them indefinitely. `.6` and `.7` are
+brand-new slots from the scale-up with no history, so they are the cleanest form
+of the evidence. Safe to run: the limit stayed at 256M and nothing on the host
+allocated 8G.
+
+The service kept serving 200s throughout, because `start-first` will not stop a
+healthy task until its replacement is ready — and the replacements never were.
+Under the default `stop-first` this experiment would have emptied the service.
+
+Evidence: `evidence/b4-task39-insufficient-resources.png`
+
+## Task 40 — Scale down during live traffic
+
+Task 39 was undone first (`--reserve-memory 64M --replicas 5`), giving 5/5
+healthy on v2. Then, with traffic running at 0.1s intervals:
+
+    $ docker service scale notes_app=2      # issued 16:42:00Z, converged 16:42:30Z
+
+### Failure count: 0
+
+    609 requests, 609 × HTTP 200, 0 non-2xx        # loop counter: requests: 609  failures: 0
+
+    before 16:42:00 (5 replicas)       after 16:42:35 (2 replicas)
+      19 73d318f857d8                    133 c30be19f88c0
+      20 8ecb116b8dd7                    132 daa652ee1f3a
+      20 944cc190a8a5
+      20 c30be19f88c0
+      20 daa652ee1f3a
+
+The three removed replicas each served their last request at 16:42:00–16:42:01,
+all returning 200; after that only the two survivors answered. Clean cut-over,
+no gap, no error line.
+
+**Why zero, and where it would not be.** Swarm removes a task from the routing
+mesh before killing it, and the app drains on SIGTERM (`SIGTERM received.
+Draining connections.` → `Drained. Exiting.`, exit 0) within the 15s grace
+period. But the requests here are short and each opens its own connection, which
+is the easy case. A client holding a **keep-alive** connection to a removed
+replica is the most likely to see a reset, and a request outliving the 15s grace
+period would be killed mid-response. So: 0 failures out of 609 for short
+requests on fresh connections, with graceful shutdown in place — not a claim
+that scale-down is lossless in general.
+
+One caveat on the drain evidence: the containers from this particular
+scale-down had already been garbage-collected by Swarm when their logs were
+checked, so the drain lines quoted above come from tasks retained from the
+Task 37 rollout.
+
+Evidence: `evidence/b4-task40-scale-down.png`, `evidence/B4-T40-traffic.txt`

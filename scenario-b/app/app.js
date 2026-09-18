@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 
+const os = require('os');
 const express = require('express');
 const { MongoClient } = require('mongodb');
 const {
@@ -17,10 +18,29 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // Time budget for one request. Checked before every DB query (see timedQuery).
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS) || 15000;
 
+// B4 (Swarm). APP_VERSION is baked into the image at build time (v1 / v2 / v3)
+// so a running replica can say which image it came from.
+const APP_VERSION = process.env.APP_VERSION || 'dev';
+// B4 Task 38 - the deliberately broken v3. When set, /healthz answers 500:
+// the process still runs, but the container healthcheck fails, so Swarm can
+// detect the bad version and roll back. Never set for v1 or v2.
+const BREAK_HEALTHZ = process.env.BREAK_HEALTHZ === '1';
+// Inside a container this is the container ID, which identifies the replica.
+const SERVED_BY = os.hostname();
+
 let mongoClient = null;
 let mongoState = 'not_connected';
 
 const app = express();
+
+// B4 Task 36 - every response names the replica that produced it, and the
+// image version that replica runs. Set first so it applies to all routes.
+app.use((req, res, next) => {
+  res.set('X-Served-By', SERVED_BY);
+  res.set('X-App-Version', APP_VERSION);
+  next();
+});
+
 app.use(requestMetrics({ timeoutMs: REQUEST_TIMEOUT_MS }));
 
 // Parsed per route rather than app-wide, so a malformed body is rejected
@@ -35,6 +55,8 @@ app.get('/', (req, res) => {
   res.json({
     service: 'taskflow-scenario-b',
     status: 'running',
+    version: APP_VERSION,
+    served_by: SERVED_BY,
     mongodb: mongoState
   });
 });
@@ -43,8 +65,18 @@ app.get('/', (req, res) => {
 // Reports the process itself, not MongoDB, so the container is healthy
 // as soon as the HTTP server can serve traffic.
 app.get('/healthz', (req, res) => {
+  if (BREAK_HEALTHZ) {
+    // v3 only (Task 38). Predictable, immediate, and detectable by Swarm.
+    return res.status(500).json({
+      status: 'broken',
+      version: APP_VERSION,
+      served_by: SERVED_BY
+    });
+  }
   res.status(200).json({
     status: 'ok',
+    version: APP_VERSION,
+    served_by: SERVED_BY,
     uptime: process.uptime()
   });
 });
@@ -292,13 +324,40 @@ const server = app.listen(PORT, HOST, () => {
   connectToMongo();
 });
 
-async function shutdown(signal) {
-  console.log(`${signal} received. Shutting down.`);
-  server.close();
-  if (mongoClient) {
-    await mongoClient.close();
+// Graceful shutdown. Swarm sends SIGTERM to the old task during a rolling
+// update or a scale-down, then waits stop_grace_period before SIGKILL.
+// server.close() stops accepting new connections and fires its callback only
+// once in-flight requests have finished, so replies are not cut off mid-flight.
+let shuttingDown = false;
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received. Draining connections.`);
+
+  // Idle keep-alive sockets would otherwise hold server.close() open until
+  // their timeout expires.
+  if (typeof server.closeIdleConnections === 'function') {
+    server.closeIdleConnections();
   }
-  process.exit(0);
+
+  server.close(async () => {
+    if (mongoClient) {
+      try {
+        await mongoClient.close();
+      } catch (err) {
+        console.warn(`MongoDB close failed: ${err.message}`);
+      }
+    }
+    console.log('Drained. Exiting.');
+    process.exit(0);
+  });
+
+  // Backstop: never outlive the orchestrator's grace period.
+  setTimeout(() => {
+    console.warn('Drain timed out. Forcing exit.');
+    process.exit(0);
+  }, 10000).unref();
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
