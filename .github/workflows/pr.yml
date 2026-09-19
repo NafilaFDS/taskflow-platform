@@ -1,9 +1,13 @@
-# B5 Task 41 - Pull Request pipeline for the Scenario B notes API.
+# B5 Tasks 41 + 42 - Pull Request pipeline for the Scenario B notes API.
 # EXAM_TOKEN: nafilaferdous-Nafilas-MacBook-Air.local-1789657698-a19f0360
 #
-# Runs on every Pull Request: test -> build image -> start container ->
+# Task 41: runs on every Pull Request: test -> build image -> start container ->
 # curl the running container's /healthz -> clean up. Any failing step fails
 # the run, and the container is removed even when an earlier step fails.
+#
+# Task 42: the npm download cache (~/.npm) is saved and restored between runs,
+# keyed on the hash of package-lock.json. `npm ci` reads from it, so a warm run
+# installs from disk instead of downloading every tarball from the registry.
 
 name: PR - test, build and health check
 
@@ -33,18 +37,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up Node.js
+      - name: Set up Node.js and restore the npm cache
+        # id is what lets the next step read the cache-hit output.
+        id: npm-cache
         uses: actions/setup-node@v5
         with:
           # Same major version as the Dockerfile's node:22-alpine base.
           node-version: '22'
+          # B5 Task 42 - cache the npm download cache (~/.npm). The cache key is
+          # built from the runner OS, the Node version and a hash of the file
+          # named below, so any lockfile change invalidates it automatically.
           cache: npm
           cache-dependency-path: scenario-b/app/package-lock.json
 
+      - name: Report npm cache status
+        # cache-hit is 'true' when the cache was restored and empty when it was
+        # not. Printed so the log itself proves whether this was a cold or a
+        # warm run - the timings below are only meaningful next to it.
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ "${{ steps.npm-cache.outputs.cache-hit }}" = 'true' ]; then
+            echo 'CACHE HIT  - warm run: ~/.npm was restored from the Actions cache.'
+          else
+            echo 'CACHE MISS - cold run: nothing cached for this lockfile yet.'
+          fi
+          cache_dir=$(npm config get cache)
+          echo "npm cache dir: ${cache_dir}"
+          du -sh "$cache_dir" 2>/dev/null || echo 'npm cache dir does not exist yet'
+
       - name: Install dependencies
         # npm ci installs exactly what the lockfile pins and fails if the
-        # lockfile and package.json have drifted apart.
-        run: npm ci
+        # lockfile and package.json have drifted apart. It resolves tarballs
+        # from the cache dir restored above, so a warm run makes no registry
+        # download at all. Timed to make the cold/warm difference visible.
+        run: |
+          start=$SECONDS
+          npm ci
+          echo "npm ci finished in $(( SECONDS - start ))s"
 
       - name: Run tests
         # node --test, 4 tests. Exits non-zero on any failure, which fails the job.
