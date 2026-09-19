@@ -1,0 +1,20 @@
+.github/workflows/pr.yml
+  s_9a998d00a347b3::t_2171c2dbd3d7b6 37
+  s_9a998d00a347b3::t_3dc7ff7b98b3dc 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a1c7225cb4a2e88bd06e0e947cc19d6ee60e1253",
+  "prompts": {},
+  "sessions": {
+    "s_9a998d00a347b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e160ea35-d98b-40f1-a815-749e342bd660",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
