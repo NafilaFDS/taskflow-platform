@@ -1,0 +1,93 @@
+# B5 Task 41 - Pull Request pipeline for the Scenario B notes API.
+# EXAM_TOKEN: nafilaferdous-Nafilas-MacBook-Air.local-1789657698-a19f0360
+#
+# Runs on every Pull Request: test -> build image -> start container ->
+# curl the running container's /healthz -> clean up. Any failing step fails
+# the run, and the container is removed even when an earlier step fails.
+
+name: PR - test, build and health check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build-healthcheck:
+    name: Test, build image, curl /healthz
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: scenario-b/app
+
+    env:
+      # run_id keeps the name unique, so parallel or re-run jobs never collide.
+      IMAGE: taskflow-scenario-b:pr-${{ github.run_id }}
+      CONTAINER: taskflow-healthcheck-${{ github.run_id }}
+      # 3000 is free on the runner; 3100 matches the port used locally.
+      HOST_PORT: '3100'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Same major version as the Dockerfile's node:22-alpine base.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: scenario-b/app/package-lock.json
+
+      - name: Install dependencies
+        # npm ci installs exactly what the lockfile pins and fails if the
+        # lockfile and package.json have drifted apart.
+        run: npm ci
+
+      - name: Run tests
+        # node --test, 4 tests. Exits non-zero on any failure, which fails the job.
+        run: npm test
+
+      - name: Build Docker image
+        run: docker build -t "$IMAGE" .
+
+      - name: Start the built image
+        # MONGODB_URI is deliberately empty: there is no database in CI, and
+        # /healthz reports the process, not the database.
+        run: |
+          docker run -d \
+            --name "$CONTAINER" \
+            -p "${HOST_PORT}:3000" \
+            -e MONGODB_URI= \
+            "$IMAGE"
+          docker ps --filter "name=$CONTAINER"
+
+      - name: Curl the running container's /healthz
+        run: |
+          code=''
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /tmp/healthz.json -w '%{http_code}' \
+              "http://127.0.0.1:${HOST_PORT}/healthz" || true)
+            if [ "$code" = "200" ]; then
+              echo "HTTP 200 from /healthz after ${attempt} attempt(s):"
+              cat /tmp/healthz.json; echo
+              # Assert the body too: a 200 carrying the wrong payload is a failure.
+              grep -q '"status":"ok"' /tmp/healthz.json
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/healthz did not return 200 within 30s (last status: '${code}')"
+          echo '--- container logs ---'
+          docker logs "$CONTAINER" || true
+          exit 1
+
+      - name: Clean up test container
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+          docker image rm -f "$IMAGE" >/dev/null 2>&1 || true
+          echo 'Test container and image removed.'
