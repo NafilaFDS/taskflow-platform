@@ -1,5 +1,5 @@
 # B5 Task 43 - publish the Scenario B image to GitHub Container Registry.
-# EXAM_TOKEN: nafilaferdous-Nafilas-MacBook-Air.local-1789657698-a19f0360
+# EXAM_TOKEN: nafila-vmi3536696-1788314521-777773cb
 #
 # Runs on every push to main. Builds the image once and pushes it under three
 # tags: the version from package.json, the full git commit SHA, and latest.
