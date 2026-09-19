@@ -1,0 +1,19 @@
+scenario-b/app/Dockerfile
+  s_9a998d00a347b3::t_9ad29a8a55583a 21-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9672be1da291c5cfeb1feddb304de0ed4e75b244",
+  "prompts": {},
+  "sessions": {
+    "s_9a998d00a347b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e160ea35-d98b-40f1-a815-749e342bd660",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
