@@ -1115,3 +1115,55 @@ checked, so the drain lines quoted above come from tasks retained from the
 Task 37 rollout.
 
 Evidence: `evidence/b4-task40-scale-down.png`, `evidence/B4-T40-traffic.txt`
+
+# B5 — CI/CD with GitHub Actions
+
+## Task 46 — Safeguard: one production deployment at a time
+
+The deploy job in `.github/workflows/deploy.yml` carries its own concurrency
+group:
+
+    concurrency:
+      group: production-deploy-notes_app
+      cancel-in-progress: false
+
+**What it does.** GitHub lets only one job at a time hold a given concurrency
+group; any other run that reaches this job queues until the holder finishes.
+What matters is what the group is keyed on: the *deployment target*, not
+`github.ref`. The workflow already had a workflow-level group
+(`ghcr-publish-${{ github.ref }}`) from Task 43, but that one is keyed on the
+branch and exists to stop two pushes racing over the `latest` tag in the
+registry. Two runs on different refs — a hotfix branch, a re-run of an older
+run, a re-approved deployment — each satisfy that group separately and could
+still both reach `docker service update notes_app`.
+
+**The incident it prevents.** Two commits land on `main` a minute apart, A then
+B. Both build, both publish, both get approved. Without the group the deploys
+overlap: run A calls `docker service update --image ...:A notes_app` and Swarm
+begins rolling replicas onto A; run B issues `--image ...:B` while that roll is
+still in flight. Swarm accepts the second update, abandons the first part-way,
+and the state production ends on depends on which call landed last rather than
+on which commit is newer. The realistic bad outcome is B converging first and A
+landing after it, leaving production serving the *older* commit while GitHub
+shows both deployments green and the newest commit marked as deployed. Nothing
+errors, so nothing alerts, and the drift is only found the next time someone
+checks `docker service ps notes_app` against `git log`. With the group in place
+B waits for A to converge and then rolls forward cleanly, so the last approved
+commit is the one left serving.
+
+**Why `cancel-in-progress: false`.** The alternative is to cancel whatever is
+already running when a new run arrives. That is right for a build and wrong for
+a deployment: cancelling mid-rolling-update kills the job between
+`docker service update` calls, leaving some replicas on the old image and some
+on the new one, with no job left running to finish the update or roll it back.
+Queuing is the safe behaviour here — a deployment that waits is better than one
+that is half-applied.
+
+Together with the Task 44 approval gate this makes production changes strictly
+serial: one human approval, one deployment in flight, one service update at a
+time.
+
+Evidence: `.github/workflows/deploy.yml` — the `deploy` job's `concurrency`
+block. No run-time screenshot is required; the safeguard is a configuration
+guarantee, and a run only shows it when a second deployment is actually queued
+behind a first.

@@ -1,4 +1,4 @@
-# B5 Tasks 43 + 44 - publish the Scenario B image, then roll it out to the VPS.
+# B5 Tasks 43 + 44 + 46 - publish the Scenario B image, then roll it out to the VPS.
 # EXAM_TOKEN: nafila-vmi3536696-1788314521-777773cb
 #
 # Task 43 (job "publish"): runs on every push to main. Builds the image once and
@@ -9,6 +9,10 @@
 # environment, then SSHes to the VPS and updates the existing notes_app Swarm
 # service to the image this same run just published. The service is updated in
 # place with a start-first rolling update - it is never removed or recreated.
+#
+# Task 46 (safeguard): the deploy job carries its own concurrency group keyed
+# on the deployment target, so two production deployments can never run at the
+# same time and race to update the same Swarm service.
 #
 # Authentication is the GITHUB_TOKEN that GitHub mints for this run and revokes
 # when the job ends, plus an SSH deploy key that lives only in GitHub Secrets.
@@ -116,11 +120,26 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # B5 Task 44 - deploy to the VPS behind a manual approval gate.
+  # B5 Task 46 - safeguard: one production deployment at a time.
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to the VPS (manual approval)
     needs: publish
     runs-on: ubuntu-latest
+
+    # B5 Task 46. The workflow-level group above is keyed on github.ref and
+    # exists to protect the `latest` tag in the registry. This one is keyed on
+    # the deployment target instead, so every run that wants to touch the
+    # production notes_app service queues behind the one already in flight -
+    # whatever branch or event it came from. Without it, two runs can both
+    # reach `docker service update notes_app` and race.
+    concurrency:
+      group: production-deploy-notes_app
+      # Never cancel a deployment that has already started. Cancelling in the
+      # middle of a rolling update would abandon it half-applied, with some
+      # replicas on the old image and some on the new one, and no job left
+      # running to finish it or roll it back.
+      cancel-in-progress: false
 
     # THIS is the approval gate. "production" is configured with a required
     # reviewer, so GitHub parks this job in "Waiting" and shows a "Review
