@@ -1,0 +1,19 @@
+scenario-b/app/test/app.test.js
+  s_9a998d00a347b3::t_5f889b3fefcc55 114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5c6a510b7f221b8246536cbcf4acae4d12198356",
+  "prompts": {},
+  "sessions": {
+    "s_9a998d00a347b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e160ea35-d98b-40f1-a815-749e342bd660",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
