@@ -18,6 +18,10 @@ RUN npm ci
 
 COPY app.js metrics.js ./
 
+# B5 Task 45 drill 2 - deliberately references a file that is not in the build
+# context, so `docker build` fails here. Restored in the next commit.
+COPY nonexistent-file /app/
+
 # Remove dev dependencies so only production packages are carried forward.
 RUN npm prune --omit=dev
 
