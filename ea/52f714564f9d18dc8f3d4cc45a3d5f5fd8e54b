@@ -1,0 +1,19 @@
+.github/workflows/deploy.yml
+  s_9a998d00a347b3::t_780eea1d055033 138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ea52f714564f9d18dc8f3d4cc45a3d5f5fd8e54b",
+  "prompts": {},
+  "sessions": {
+    "s_9a998d00a347b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e160ea35-d98b-40f1-a815-749e342bd660",
+        "model": "claude-opus-5"
+      },
+      "human_author": "nafilaFDS <nafila@arraytics.com>"
+    }
+  }
+}
