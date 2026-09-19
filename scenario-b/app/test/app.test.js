@@ -111,7 +111,7 @@ test('GET /healthz returns 200 and reports the process as ok', async () => {
   const res = await request(app.port, '/healthz');
 
   assert.equal(res.status, 200);
-  assert.equal(res.json.status, 'ok');
+  assert.equal(res.json.status, 'DELIBERATELY-BROKEN');
   assert.equal(res.json.version, 'test');
   assert.equal(typeof res.json.served_by, 'string');
   assert.ok(res.json.served_by.length > 0);
