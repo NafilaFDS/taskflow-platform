@@ -1,0 +1,101 @@
+# B5 Task 43 - publish the Scenario B image to GitHub Container Registry.
+# EXAM_TOKEN: nafilaferdous-Nafilas-MacBook-Air.local-1789657698-a19f0360
+#
+# Runs on every push to main. Builds the image once and pushes it under three
+# tags: the version from package.json, the full git commit SHA, and latest.
+#
+# Authentication is the GITHUB_TOKEN that GitHub mints for this run and revokes
+# when the job ends. There is no stored registry password, no AWS_SECRET_ACCESS_KEY
+# and no other long-lived key anywhere in this workflow.
+
+name: Deploy - publish image to GHCR
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  # packages: write is what lets GITHUB_TOKEN push to GHCR. contents: read is
+  # only needed to check the repository out. Nothing else is granted.
+  contents: read
+  packages: write
+
+concurrency:
+  # Two pushes landing close together would otherwise race over the `latest`
+  # tag and the newer image could end up behind the older one.
+  group: ghcr-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, tag and push to GHCR
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: scenario-b/app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Work out the image name and version
+        id: meta
+        run: |
+          # A registry path must be lowercase, and the owner here is "NafilaFDS",
+          # so the whole name is folded down before it is used.
+          image="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')/scenario-b"
+          # package.json is the single source of truth for the version tag:
+          # bump it there and the next push to main publishes the new version.
+          version="v$(jq -r .version package.json)"
+          {
+            echo "image=${image}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Will publish ${image}"
+          echo "  tags: ${version}, ${GITHUB_SHA}, latest"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Short-lived token issued for this run and revoked when the job ends.
+          # Nothing static is stored: no registry password, no access key.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image and apply all three tags
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          # APP_VERSION is an existing build arg, so the running container
+          # reports the same version its tag claims at /healthz.
+          docker build \
+            --build-arg "APP_VERSION=${VERSION}" \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:${GITHUB_SHA}" \
+            -t "${IMAGE}:latest" \
+            .
+          docker images --filter "reference=${IMAGE}"
+
+      - name: Push every tag to GHCR
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          # One build, three tags, one upload: the layers are pushed once and
+          # the remaining tags are references to the same digest.
+          docker push --all-tags "${IMAGE}"
+
+      - name: Show what was published
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          echo "Published digest (all three tags point at it):"
+          docker image inspect "${IMAGE}:${VERSION}" \
+            --format '{{range .RepoDigests}}{{println .}}{{end}}'
+          for tag in "${VERSION}" "${GITHUB_SHA}" latest; do
+            echo "--- ${IMAGE}:${tag} ---"
+            docker buildx imagetools inspect "${IMAGE}:${tag}" | head -3
+          done
