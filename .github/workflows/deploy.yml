@@ -135,10 +135,7 @@ jobs:
       packages: read
 
     env:
-      # B5 Task 45 drill 3 - deliberately wrong service name. The deploy job
-      # aborts at the pre-flight check before `docker service update` runs,
-      # so the real notes_app service is never touched. Restored next commit.
-      SERVICE: notes_app_typo
+      SERVICE: notes_app
       # The commit SHA tag, not `latest`: it names exactly one immutable image,
       # so the rollout can be proved to match the run that built it.
       IMAGE: ${{ needs.publish.outputs.image }}:${{ github.sha }}
