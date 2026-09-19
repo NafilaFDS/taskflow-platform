@@ -1,12 +1,19 @@
-# B5 Task 43 - publish the Scenario B image to GitHub Container Registry.
+# B5 Tasks 43 + 44 - publish the Scenario B image, then roll it out to the VPS.
 # EXAM_TOKEN: nafila-vmi3536696-1788314521-777773cb
 #
-# Runs on every push to main. Builds the image once and pushes it under three
-# tags: the version from package.json, the full git commit SHA, and latest.
+# Task 43 (job "publish"): runs on every push to main. Builds the image once and
+# pushes it under three tags: the version from package.json, the full git commit
+# SHA, and latest.
+#
+# Task 44 (job "deploy"): waits for a human to approve the "production"
+# environment, then SSHes to the VPS and updates the existing notes_app Swarm
+# service to the image this same run just published. The service is updated in
+# place with a start-first rolling update - it is never removed or recreated.
 #
 # Authentication is the GITHUB_TOKEN that GitHub mints for this run and revokes
-# when the job ends. There is no stored registry password, no AWS_SECRET_ACCESS_KEY
-# and no other long-lived key anywhere in this workflow.
+# when the job ends, plus an SSH deploy key that lives only in GitHub Secrets.
+# There is no stored registry password, no AWS_SECRET_ACCESS_KEY and no other
+# long-lived key anywhere in this workflow.
 
 name: Deploy - publish image to GHCR
 
@@ -34,6 +41,12 @@ jobs:
     defaults:
       run:
         working-directory: scenario-b/app
+
+    # Task 44 - the deploy job needs to know exactly which image this run built,
+    # so it deploys that image and not whatever `latest` happens to point at.
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      version: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -100,3 +113,187 @@ jobs:
             echo "--- ${IMAGE}:${tag} ---"
             docker buildx imagetools inspect "${IMAGE}:${tag}" | head -3
           done
+
+  # ---------------------------------------------------------------------------
+  # B5 Task 44 - deploy to the VPS behind a manual approval gate.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to the VPS (manual approval)
+    needs: publish
+    runs-on: ubuntu-latest
+
+    # THIS is the approval gate. "production" is configured with a required
+    # reviewer, so GitHub parks this job in "Waiting" and shows a "Review
+    # deployments" button. Nothing touches the VPS until a human clicks Approve.
+    environment:
+      name: production
+
+    permissions:
+      # The deploy job only pulls; it never publishes. Narrower than the
+      # workflow-level grant above, which applies to the publish job.
+      contents: read
+      packages: read
+
+    env:
+      SERVICE: notes_app
+      # The commit SHA tag, not `latest`: it names exactly one immutable image,
+      # so the rollout can be proved to match the run that built it.
+      IMAGE: ${{ needs.publish.outputs.image }}:${{ github.sha }}
+
+    steps:
+      - name: Install the SSH deploy key and pin the VPS host key
+        env:
+          # Both come from repository secrets. No host, user, key or passphrase
+          # is ever written into this file.
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_HOST_KEY: ${{ secrets.VPS_SSH_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # umask 077 so the key file is never even briefly group-readable.
+          (umask 077; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key)
+          # The VPS host key is pinned from a secret rather than accepted on
+          # first use, so a spoofed host cannot collect the deploy key.
+          printf '%s\n' "$VPS_SSH_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          # Fails loudly now if the secret is malformed, instead of failing
+          # halfway through the rollout with a confusing auth error.
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          echo 'Deploy key installed and host key pinned.'
+
+      - name: Check the VPS is reachable and notes_app is already running
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          # StrictHostKeyChecking=yes plus BatchMode: the connection fails
+          # rather than prompting or trusting an unknown host.
+          ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 \
+              "${VPS_USER}@${VPS_HOST}" \
+              "SERVICE='${SERVICE}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo "host: $(hostname)  docker: $(docker --version)"
+          echo "swarm: $(docker info --format '{{.Swarm.LocalNodeState}}')"
+          if ! docker service inspect "$SERVICE" >/dev/null 2>&1; then
+            echo "ERROR: service '${SERVICE}' does not exist on this host." >&2
+            echo 'This job updates an existing service; it will not create one.' >&2
+            docker service ls >&2 || true
+            exit 1
+          fi
+          docker service inspect "$SERVICE" --format \
+            'before: {{.Spec.TaskTemplate.ContainerSpec.Image}} ({{.Spec.Mode.Replicated.Replicas}} replicas)'
+          REMOTE
+
+      - name: Log the VPS in to GHCR with the run's short-lived token
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The token is piped through the SSH session into docker's stdin, so
+          # it never appears in an argument list on the runner or on the VPS,
+          # and it stops working the moment this job ends.
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "${VPS_USER}@${VPS_HOST}" \
+              "docker login ghcr.io -u '${GITHUB_ACTOR}' --password-stdin"
+
+      - name: Roll notes_app onto the newly published image
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -o ServerAliveInterval=30 \
+              "${VPS_USER}@${VPS_HOST}" \
+              "SERVICE='${SERVICE}' IMAGE='${IMAGE}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          # In place. The service keeps its ID, its published port, its replica
+          # count and its task history. Nothing is removed and nothing is
+          # recreated - `docker service rm` is deliberately not used here.
+          #
+          #   --update-order start-first : the new task must be healthy before
+          #                                the old one is stopped (zero downtime)
+          #   --update-parallelism 1     : one replica at a time
+          #   --with-registry-auth       : hands the GHCR credential to the
+          #                                agents so they can pull the image
+          #
+          # Without --detach the command blocks until Swarm converges and exits
+          # non-zero if the update fails or is rolled back, so a bad deploy
+          # fails this job instead of reporting success.
+          docker service update \
+            --with-registry-auth \
+            --update-order start-first \
+            --update-parallelism 1 \
+            --image "$IMAGE" \
+            "$SERVICE"
+
+          echo '--- update status ---'
+          docker service inspect "$SERVICE" --format '{{json .UpdateStatus}}'
+          REMOTE
+
+      - name: Verify the new image is the one actually serving traffic
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "${VPS_USER}@${VPS_HOST}" \
+              "SERVICE='${SERVICE}' IMAGE='${IMAGE}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          # 1. The spec really points at the image this run published.
+          running=$(docker service inspect "$SERVICE" \
+            --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}')
+          echo "service image: ${running}"
+          case "$running" in
+            "$IMAGE"|"$IMAGE"@*) echo 'OK - service is on the expected image.' ;;
+            *) echo "::error::expected ${IMAGE}, service reports ${running}"; exit 1 ;;
+          esac
+
+          # 2. Every desired-state=running task is on it too, and is Running.
+          echo '--- docker service ps notes_app ---'
+          docker service ps "$SERVICE" --no-trunc --filter desired-state=running
+
+          # 3. The published port answers, which proves the rollout serves
+          #    traffic rather than merely being accepted by Swarm.
+          for attempt in $(seq 1 30); do
+            if body=$(curl -fsS -m 5 http://127.0.0.1:3200/healthz); then
+              echo "healthz after ${attempt} attempt(s): ${body}"
+              echo "$body" | grep -q '"status":"ok"'
+              exit 0
+            fi
+            sleep 2
+          done
+          echo '::error::/healthz did not return 200 through the routing mesh'
+          exit 1
+          REMOTE
+
+      - name: Remove the deploy key and the VPS registry credential
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          # The GHCR credential on the VPS is useless after the job ends, but it
+          # is cleared anyway so nothing is left behind in ~/.docker/config.json.
+          ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 \
+              "${VPS_USER}@${VPS_HOST}" 'docker logout ghcr.io' || true
+          rm -f ~/.ssh/deploy_key
+          echo 'Deploy key removed from the runner.'
